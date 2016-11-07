@@ -8,7 +8,7 @@
 #include <stdbool.h> //for boolean variables
 #include<string.h>
 
-#define TIMESLICE 3000000 //nanoseconds to define milliseconds
+#define TIMESLICE 1000000 //nanoseconds to define milliseconds
 #define BILLION 1000000000L
 
 void *threadFunction(void *arg);
@@ -34,7 +34,7 @@ void *threadFunction(void *arg) {
 
 	char *fileNames[fileCount];
 
-	printf("Waiting to start Thread id: %lu\n",pthread_self());
+	printf("\nWaiting to start Thread id: %lu\n",pthread_self());
 	while(process->blockedState);
 	for(i = 0; i<fileCount; i++) {
 		if(process->filePaths[i]!=NULL) {
@@ -48,23 +48,25 @@ void *threadFunction(void *arg) {
 			fp[i] = NULL;
 		}
 	}
-	printf("Received Signal Successful! Thread ID: %lu.\n\n",pthread_self());
+	printf("Received Signal Successful! Thread ID: %lu.\n",pthread_self());
 	locked = true;
 
 	char c = 0;
 	for (i = 0; i < instructions; i++) {
 		if(process->blockedState) {
 			while(process->blockedState);
-			printf("\n\nCurrent executing Thread ID: %lu.\n\n",pthread_self());
+			printf("\nCurrent executing Thread ID: %lu.\n",pthread_self());
 		}
-		/*else {
-			if((c = fgetc(fp[0])) != EOF)
-				printf("%c",c);
+		else {
+			if((c = fgetc(fp[0])) != EOF) {
+				//printf("%c",c);
+				//printf(" ");
+			}
 			else {
 				printf("\n\nBREAKING!\n");
 				break;
 			}
-		}*/
+		}
 	}
 
 	for(i = 0; i<fileCount; i++) {
@@ -94,7 +96,6 @@ void *dispatcher(void *arg) {
 
 		clock_gettime(CLOCK_MONOTONIC, &end);
 		diff = BILLION * (end.tv_sec - start.tv_sec) + end.tv_nsec - start.tv_nsec;
-
 		if(diff > TIMESLICE) {
 			//if(numProcWait>1) {
 				(process + currentThread)->blockedState = !(process + currentThread)->blockedState;
