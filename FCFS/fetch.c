@@ -4,15 +4,13 @@
 #include"decode.h"
 #include<pthread.h>
 
-int fetch(char *fileIn,int processID)
-{
+int fetch(char *fileIn,int processID) {
 	FILE *fp= fopen(fileIn,"r");
 	char ch='0',*tmp;
 	int insSize=0;
 	pthread_t insExe;int insStatus;
 	
-	while (ch != EOF)
-	{	
+	while (ch != EOF) {	
 		while(ch!='\n'){
 			ch = getc(fp);	
 			insSize++;	
@@ -23,17 +21,18 @@ int fetch(char *fileIn,int processID)
 		pri((void *)tmp,processID);
 		ch = getc(fp);
 		insSize=1;
-			
+
 	}
 	fclose(fp);
   return 0;
 }
+
 struct queue{
 	char *filenm;
 	struct queue *q;
 };
-int main()
-{
+
+int main() {
 
 	int i=0;
 	struct queue *proQ=NULL,*head=NULL;
@@ -57,7 +56,7 @@ int main()
 
 
 	time_t t;
-    	time(&t);
+   	time(&t);
 
 
 	int n,bt[20],wt[20],tat[20],avwt=0,avtat=0,j;//variables used for Burst Time, Wait Time, turnaround time and Throughput
@@ -75,12 +74,12 @@ int main()
 	time_t result;
 	
 	for(i=0;i<5;i++){
-	result=time(NULL);
-	sprintf(start_time[i],"%s",asctime(localtime(&result))); 
-	fetch(head->filenm,(i+1));
-	result=time(NULL);
-	sprintf(end_time[i],"%s",asctime(localtime(&result))); 
-	head=head->q;
+		result=time(NULL);
+		sprintf(start_time[i],"%s",asctime(localtime(&result))); 
+		fetch(head->filenm,(i+1));
+		result=time(NULL);
+		sprintf(end_time[i],"%s",asctime(localtime(&result))); 
+		head=head->q;
 	}
  
 //*****************************Generating Process Log - Ends ***********************************************
@@ -112,27 +111,22 @@ int main()
 
 
 //FILE
-   FILE *fiptr;
-   fiptr=fopen("fcfs_process_log.txt","a+");
-   if(fiptr==NULL){
-      printf("Error!");
-      exit(1);
-   }
+   	FILE *fiptr;
+   	fiptr=fopen("fcfs_process_log.txt","a+");
+   	if(fiptr==NULL)	{
+    	printf("Error!");
+      	exit(1);
+  	}
 
-else{
+	else {
 
-
-
-    for(i=0;i<n;i++)
-    {
-        tat[i]=bt[i]+wt[i];
-        avwt+=wt[i];
-        avtat+=tat[i];
-        fprintf(fiptr,"\n P[%d] \t \t %d \t \t%d \t \t%d \t\t %s \t\t\t\t\t\t\t\t %s",i+1,bt[i],wt[i],tat[i],start_time[i],end_time[i]);
-    }
-
-}
-   fclose(fiptr);
-
+	    for(i=0;i<n;i++) {
+	        tat[i]=bt[i]+wt[i];
+	        avwt+=wt[i];
+	        avtat+=tat[i];
+	        fprintf(fiptr,"\n P[%d] \t \t %d \t \t%d \t \t%d \t\t %s \t\t\t\t\t\t\t\t %s",i+1,bt[i],wt[i],tat[i],start_time[i],end_time[i]);
+	    }
+	}
+   	fclose(fiptr);
     return 0;
 }
