@@ -153,26 +153,55 @@ void *ThreadFunction(void *arg) {
 void *Dispatcher(void *arg) {
 	diff = 0;
 	TCB *process = (TCB *) arg;
-	char *RESOURCE_PATH = "./resource.txt";
 
-	//printf("STATE1: %s\n",*blockedState?"true":"false");
-	//printf("STATE2: %s\n",*(blockedState+1)?"true":"false");
+	char *RESOURCE_PATH = "./resource.txt";
+	char start_time[35], end_time[35], instant_time[35];
+
+    logptr = fopen("process_log.txt","a+");
+    if(logptr == NULL) {
+       printf("Error. Cannot open Log for writing!");
+       exit(1);
+    }
+
 	while(!(process - 1 + startq->tid)->readyState);
-	CopyFile((process - 1 + startq->tid)->stackFileName,RESOURCE_PATH);
+	CopyFile((process - 1 + startq->tid)->stackFileName, RESOURCE_PATH);
 
 	(process -1 + startq->tid)->blockedState = false;
-	clock_gettime(CLOCK_MONOTONIC, &start);
+	clock_gettime(CLOCK_MONOTONIC_RAW, &start);
+
+	// Log Event
+	clock_gettime(CLOCK_REALTIME, &instant);
+	realTime = localtime(&instant.tv_sec);
+	snprintf(instant_time,20,"%s",asctime(realTime));
+	sprintf(instant_time,"%s.%ld %d\n",instant_time,instant.tv_nsec/1000000,realTime->tm_year+1900);
+	fprintf(logptr, "\n\t%d \t\t\t Executing \t\t\t %s",startq->tid,instant_time);
+
 	while(numProcWait>0) {
 
-		clock_gettime(CLOCK_MONOTONIC, &end);
+		clock_gettime(CLOCK_MONOTONIC_RAW, &end);
 		diff = BILLION * (end.tv_sec - start.tv_sec) + end.tv_nsec - start.tv_nsec;
 		if(diff > TIMESLICE) {
-				printf("\nTIMESLICE\n");
 				pthread_mutex_lock(&lock);
-				//printf("%d\n",startq->tinumProcWait--;d);
+				printf("\nTIMESLICE\n");
 
+				// Log Event
+				clock_gettime(CLOCK_REALTIME, &instant);
+				realTime = localtime(&instant.tv_sec);
+				snprintf(instant_time,20,"%s",asctime(realTime));
+				sprintf(instant_time,"%s.%ld %d\n",instant_time,instant.tv_nsec/1000000,realTime->tm_year+1900);
+				fprintf(logptr, "\n\t0 \t\t\t TIMESLICE \t\t\t %s",instant_time);
+
+				// printf("%" PRIu64 "\n", diff);
 				// block the current process
 				(process - 1 + startq->tid)->blockedState = !(process -1 + startq->tid)->blockedState;
+
+				// Log event
+				clock_gettime(CLOCK_REALTIME, &instant);
+				realTime = localtime(&instant.tv_sec);
+				snprintf(instant_time,20,"%s",asctime(realTime));
+				sprintf(instant_time,"%s.%ld %d\n",instant_time,instant.tv_nsec/1000000,realTime->tm_year+1900);
+				fprintf(logptr, "\n\t%d \t\t\t Blocking \t\t\t %s",startq->tid,instant_time);
+
 				// wait for the current process to finish the current executing instruction and get blocked
 				while(!(process - 1 + startq->tid)->blocked);
 
@@ -185,17 +214,27 @@ void *Dispatcher(void *arg) {
 					push(curr);
 				}
 				else {
+					fprintf(logptr, "\n\t%d \t\t\t Exiting \t\t\t %s",curr->tid,instant_time);
 					printf("\n\nEXITING CURR: %d\n\n", curr->tid);
 				}
 				printf("Unblocking %d\n", startq->tid);
+
 				// Restore file from StackFile[ProcessID].txt to Resource.txt for next process
 				CopyFile((process - 1 + startq->tid)->stackFileName,RESOURCE_PATH);
 				(process - 1 + startq->tid)->blockedState = !(process -1 + startq->tid)->blockedState;
 
-				clock_gettime(CLOCK_MONOTONIC, &start);
+				// Log Event
+				clock_gettime(CLOCK_REALTIME, &instant);
+				realTime = localtime(&instant.tv_sec);
+				snprintf(instant_time,20,"%s",asctime(realTime));
+				sprintf(instant_time,"%s.%ld %d\n",instant_time,instant.tv_nsec/1000000,realTime->tm_year+1900);
+				fprintf(logptr, "\n\t%d \t\t\t Executing \t\t\t %s",startq->tid,instant_time);
+
+				clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 				pthread_mutex_unlock(&lock);
 		}
 	}
+	fclose(logptr);
 }
 
 void *CopyFile(char *from, char *to) {
