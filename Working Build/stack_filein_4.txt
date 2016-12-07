@@ -1,0 +1,13 @@
+ALSLAL 0
+MAYANK 81
+ALS -1
+MNO 15
+a 5
+b 6
+i 7
+j 8
+c 9
+x 10
+y 10
+d 12
+DHARIT 13
