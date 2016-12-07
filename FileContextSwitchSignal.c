@@ -1,3 +1,5 @@
+/* Context Switch between 2 Threads + Interrupt handling */
+
 #include<stdio.h> //for printf
 #include<pthread.h> //for threads, mutual exclusion, conditional wait and signalling
 #include<time.h> //for accurate clock time
