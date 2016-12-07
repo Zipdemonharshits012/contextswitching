@@ -5,9 +5,10 @@
 #include <inttypes.h> //for using uint64_t data type
 #include <stdlib.h> //for malloc
 //#include<semaphore.h>
-#include  <stdbool.h> //for boolean variables
+#include <stdbool.h> //for boolean variables
 #include <string.h> // for string operations
 #include <signal.h> // for signalling
+#include <sys/sysinfo.h>
 #include "decode.h"
 #define nothread 4 // number of threads running
 
@@ -26,7 +27,7 @@ struct Node {
 	pthread_t t;
 	int tid;
 	struct Node *next;
-}*startq,*rearq;
+} *startq,*rearq;
 
 struct Node* createNode(int id) {
 	struct Node* a = malloc(sizeof(struct Node));
@@ -68,9 +69,12 @@ pthread_t tid[2];
 pthread_t disp; //dispatcher
 uint64_t diff;
 int currentThread;
-struct timespec start, end;
+struct timespec start, end, instant;
+struct sysinfo info; // getting sys uptime in seconds
+struct tm *realTime;
 int numProcWait = nothread; //No of processes running
 TCB process[nothread];
+FILE *logptr;
 
 void *ThreadFunction(void *arg) {
 	int i,instructions = INT_MAX;
@@ -276,11 +280,27 @@ void catchint(int signo) {
 	pthread_mutex_lock(&lock);
 	//printf("%d\n",startq->tid);
 	char *RESOURCE_PATH = "./resource.txt";
+	char instant_time[35];
+
+	// Log event
+	clock_gettime(CLOCK_REALTIME, &instant);
+	realTime = localtime(&instant.tv_sec);
+	snprintf(instant_time,20,"%s",asctime(realTime));
+	sprintf(instant_time,"%s.%ld %d\n",instant_time,instant.tv_nsec/1000000,realTime->tm_year+1900);
+	fprintf(logptr, "\n   INT \t\t\t INTERRUPT \t\t\t %s",instant_time);
+
 	printf("\nInterrupt Subrouting: CHANGING THREAD!\n");
 	// block the current process
 	(process - 1 + startq->tid)->blockedState = !(process -1 + startq->tid)->blockedState;
 	// wait for the current process to finish the current executing instruction and get blocked
 	while(!(process - 1 + startq->tid)->blocked);
+
+	// Log event
+	clock_gettime(CLOCK_REALTIME, &instant);
+	realTime = localtime(&instant.tv_sec);
+	snprintf(instant_time,20,"%s",asctime(realTime));
+	sprintf(instant_time,"%s.%ld %d\n",instant_time,instant.tv_nsec/1000000,realTime->tm_year+1900);
+	fprintf(logptr, "\n\t%d \t\t\t Blocking \t\t\t %s",startq->tid,instant_time);
 
 	// Save file from Resource.txt to StackFile[ProcessID].txt for current process
 	CopyFile(RESOURCE_PATH,(process - 1 + startq->tid)->stackFileName);
@@ -295,7 +315,14 @@ void catchint(int signo) {
 	(process - 1 + startq->tid)->blockedState = !(process -1 + startq->tid)->blockedState;
 	push(curr);
 
-	clock_gettime(CLOCK_MONOTONIC, &start);
+	// Log Event
+	clock_gettime(CLOCK_REALTIME, &instant);
+	realTime = localtime(&instant.tv_sec);
+	snprintf(instant_time,20,"%s",asctime(realTime));
+	sprintf(instant_time,"%s.%ld %d\n",instant_time,instant.tv_nsec/1000000,realTime->tm_year+1900);
+	fprintf(logptr, "\n\t%d \t\t\t Executing \t\t\t %s",startq->tid,instant_time);
+
+	clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 	pthread_mutex_unlock(&lock);
 }
 
