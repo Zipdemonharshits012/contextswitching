@@ -10,7 +10,7 @@
 #include <signal.h> // for signalling
 #include <sys/sysinfo.h>
 #include "decode.h"
-#define nothread 4 // number of threads running
+#define nothread 5 // number of threads running
 
 #define TIMESLICE 50000000 //nanoseconds to define milliseconds
 #define BILLION 1000000000L
@@ -61,11 +61,11 @@ typedef struct ThreadControlBlock {
 	char *filePath;
 	char *stackFileName;
 	int processID;
+	FILE *fp;
 } TCB;
 
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
-pthread_t tid[2];
 pthread_t disp; //dispatcher
 uint64_t diff;
 int currentThread;
@@ -77,14 +77,13 @@ TCB process[nothread];
 FILE *logptr;
 
 void *ThreadFunction(void *arg) {
-	int i,instructions = INT_MAX;
+	int i,instructions = INT_MAX,s,insSize=0;
 	bool unlockCheck=true; // locked for synchronizing the thread withing itself
-	char buff[100];
+	char buff[100],c = 0, *tmp;
 	uint64_t diff=0;
 
 	TCB *process = (TCB *)arg;
-	int fileCount = sizeof(process->filePath)/sizeof(process->filePath);
-	FILE *fp;
+	//FILE *fp;
 
 	char *fileName;
 
@@ -100,10 +99,11 @@ void *ThreadFunction(void *arg) {
 	fileName = malloc(sizeof(char) * strlen(process->filePath));
 	strcpy(fileName,process->filePath);
 	//printf("FILE NAME: %s\n",fileName);
-	fp = fopen(fileName, "r");
-
-	int insSize=0;
-	char c = 0,*tmp;
+	process->fp = fopen(fileName, "r");
+	if(!process->fp) {
+		s = pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+		process->exitStatus = true;
+	}
 
 	process->readyState = true;
 	while(process->blockedState);
@@ -126,29 +126,28 @@ void *ThreadFunction(void *arg) {
 				int insStatus;
 
 				while(c!='\n') {
-					c = getc(fp);
+					c = getc(process->fp);
 					insSize++;
 				}
 
-				fseek(fp,-(insSize),SEEK_CUR);
+				fseek(process->fp,-(insSize),SEEK_CUR);
 				tmp = (char *)malloc(insSize*sizeof(char));
-				fread(tmp,insSize,sizeof(char),fp);
+				fread(tmp,insSize,sizeof(char),process->fp);
 				pri((void *)tmp,pthread_self());
-				c = getc(fp);
+				c = getc(process->fp);
 				insSize=1;
 			}
 			else {
 				process->exitStatus = true;
 				process->blocked = true;
 				printf("Breaking!");
+				numProcWait--;
+				free(fileName);
+				fclose(process->fp);
 				break;
 			}
 		}
 	}
-	numProcWait--;
-	free(fileName);
-	fclose(fp);
-
 	printf("\nEXITING THREAD: %lu\n",pthread_self());
 	//printf("Number of processes waiting: %d\n\n",numProcWait);
 	return NULL;
@@ -157,6 +156,7 @@ void *ThreadFunction(void *arg) {
 void *Dispatcher(void *arg) {
 	diff = 0;
 	TCB *process = (TCB *) arg;
+	int cancel_stat;
 
 	char *RESOURCE_PATH = "./resource.txt";
 	char start_time[35], end_time[35], instant_time[35];
@@ -168,9 +168,30 @@ void *Dispatcher(void *arg) {
     }
 
 	while(!(process - 1 + startq->tid)->readyState);
-	CopyFile((process - 1 + startq->tid)->stackFileName, RESOURCE_PATH);
+
+	while(!(process - 1 + startq->tid)->fp) {
+		cancel_stat = pthread_cancel(startq->t);
+		(process - 1 + startq->tid)->exitStatus = true;
+		(process - 1 + startq->tid)->blockedState = true;
+		(process - 1 + startq->tid)->blocked = true;
+		if(cancel_stat != 0) {
+			printf("\nCANCEL FAILED!\n");
+		}
+		else {
+			// Log Event
+			clock_gettime(CLOCK_REALTIME, &instant);
+			realTime = localtime(&instant.tv_sec);
+			snprintf(instant_time,20,"%s",asctime(realTime));
+			sprintf(instant_time,"%s.%ld %d\n",instant_time,instant.tv_nsec/1000000,realTime->tm_year+1900);
+			fprintf(logptr, "\n\t%d \t\t\t CANCELLING \t\t %s",startq->tid,instant_time);
+			printf("\nCANCELLED: %d\n",startq->tid);
+		}
+		pop();
+	}
 
 	(process -1 + startq->tid)->blockedState = false;
+
+	CopyFile((process - 1 + startq->tid)->stackFileName, RESOURCE_PATH);
 	clock_gettime(CLOCK_MONOTONIC_RAW, &start);
 
 	// Log Event
@@ -222,6 +243,26 @@ void *Dispatcher(void *arg) {
 					printf("\n\nEXITING CURR: %d\n\n", curr->tid);
 				}
 				printf("Unblocking %d\n", startq->tid);
+
+				while(!(process - 1 + startq->tid)->fp) {
+					cancel_stat = pthread_cancel(startq->t);
+					(process - 1 + startq->tid)->exitStatus = true;
+					(process - 1 + startq->tid)->blockedState = true;
+					(process - 1 + startq->tid)->blocked = true;
+					if(cancel_stat != 0) {
+						printf("\nCANCEL FAILED!\n");
+					}
+					else {
+						// Log Event
+						clock_gettime(CLOCK_REALTIME, &instant);
+						realTime = localtime(&instant.tv_sec);
+						snprintf(instant_time,20,"%s",asctime(realTime));
+						sprintf(instant_time,"%s.%ld %d\n",instant_time,instant.tv_nsec/1000000,realTime->tm_year+1900);
+						fprintf(logptr, "\n\t%d \t\t\t CANCELLING \t\t %s",startq->tid,instant_time);
+						printf("\nCANCELLED: %d\n",startq->tid);
+					}
+					pop();
+				}
 
 				// Restore file from StackFile[ProcessID].txt to Resource.txt for next process
 				CopyFile((process - 1 + startq->tid)->stackFileName,RESOURCE_PATH);
@@ -306,8 +347,15 @@ void catchint(int signo) {
 	CopyFile(RESOURCE_PATH,(process - 1 + startq->tid)->stackFileName);
 
 	struct Node *curr = pop();
-	while((process - 1 + startq->tid)->exitStatus == true)
-		pop();
+	if((process - 1 + curr->tid)->exitStatus == false) {
+		printf("Pushing %d\n", curr->tid);
+		push(curr);
+	}
+	else {
+		fprintf(logptr, "\n\t%d \t\t\t Exiting \t\t\t %s",curr->tid,instant_time);
+		printf("\n\nEXITING CURR: %d\n\n", curr->tid);
+	}
+	printf("Unblocking %d\n", startq->tid);
 
 	// Restore file from StackFile[ProcessID].txt to Resource.txt for next process
 	CopyFile((process - 1 + startq->tid)->stackFileName,RESOURCE_PATH);
@@ -342,7 +390,6 @@ int main() {
 		process[i].readyState = false;
 		process[i].blocked = true;
 		process[i].exitStatus = false;
-		process[i].exitStatus = false;
 		process[i].processID = i;
 	}
 
@@ -357,8 +404,11 @@ int main() {
 
 	process[3].filePath = "./filein_4.txt";
 	process[3].stackFileName = "./stack_filein_4.txt";
-	clock_gettime(CLOCK_MONOTONIC, &startfinal);
 
+	process[4].filePath = "./file5.txt";
+	process[4].stackFileName = "./stack_filein_5.txt";
+
+	clock_gettime(CLOCK_MONOTONIC_RAW, &startfinal);
 	static struct sigaction act;
 	struct Node *iter = startq;
     /* set up the action to be taken on receipt of SIGNINT */
@@ -382,7 +432,7 @@ int main() {
 		//printf("Thread %d EXITED. No. of Waiting Processes: %d\n",i+1,numProcWait);
 	}
 
-	clock_gettime(CLOCK_MONOTONIC, &endfinal);
+	clock_gettime(CLOCK_MONOTONIC_RAW, &endfinal);
 	diff = BILLION * (endfinal.tv_sec - startfinal.tv_sec) + endfinal.tv_nsec - startfinal.tv_nsec;
 	printf("Total Run Time: %" PRIu64 " ms\n",diff/1000000);
 
